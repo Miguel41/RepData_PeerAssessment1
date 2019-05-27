@@ -1,25 +1,277 @@
 ---
 title: "Reproducible Research: Peer Assessment 1"
+author: "Miguel Ortiz"
 output: 
   html_document:
     keep_md: true
 ---
 
 
-## Loading and preprocessing the data
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Reproducible Research Project Description
+
+This assignment makes use of data from a personal activity monitoring device. This device collects data at 5 minute intervals through out the day. The data consists of two months of data from an anonymous individual collected during the months of October and November, 2012 and include the number of steps taken in 5 minute intervals each day.
+
+The data for this assignment can be downloaded from the course web site: [Dataset](https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip)
+
+The variables included in this dataset are:
+
+* **steps**: Number of steps taking in a 5-minute interval (missing values are coded as NA)
+* **date**: The date on which the measurement was taken in YYYY-MM-DD format
+* **interval**: Identifier for the 5-minute interval in which measurement was taken
+
+The dataset is stored in a comma-separated-value (CSV) file and there are a total of 17,568 observations in this dataset.
+
+## Download and read the dataset
+
+First of all, we must download the data set and unzip it. This chunk of code performs these operations. 
 
 
+```{r download, cache = TRUE, results='hide'}
+# Step0: Get the working directory
+pwd <- getwd()
+
+# Step1: Download the required dataset
+url <- "https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip"
+download.file(url, file.path(pwd, "DataPeerAssessment.zip"))
+
+# Step2: Unzip the data
+unzip(file.path(pwd, "DataPeerAssessment.zip"), overwrite = TRUE, exdir = ".")
+```
+
+After that, we have now in the work directory a file called activity.csv. So, now we gonna read it in R.
+
+```{r read, cache = TRUE, results='hide'}
+df <- read.csv(file.path(pwd, "activity.csv"))
+```
+
+## Process/transform the data
+
+At this point, we are going to change the date format (character 2 date), to be able to operate with the dates.
+
+```{r convert, cache = TRUE, results='hide'}
+df$date <- strptime(df$date, "%Y-%m-%d")
+```
 
 ## What is mean total number of steps taken per day?
 
+We are going to solve all the questions.
+
+### Calculate the total number of steps taken per day
+
+We make a split by dates of the number of steps. And for each day, we perform the sum opperation in order to obtain the total. Note: it's mandatory to remove the NAs!
+
+```{r Calculate, cache = TRUE, results='hide'}
+StepsByDate <- split(df$steps, df$date$yday)
+TotalStepsByDate <- sapply(StepsByDate, sum, na.rm = TRUE)
+```
+
+Finally in this chunk, we generate a histogram of the total number of steps taken each day.
+
+```{r Plot, cache = TRUE, echo = TRUE}
+plot(x = unique(df$date$yday), 
+     y = TotalStepsByDate, 
+     main = "Steps by day", 
+     xlab = "Date from October to November 2012)", 
+     ylab = "Frequency",
+     type = "h",
+     lwd = 5,
+     col = "pink")
+```
+
+And we create a table with the mean and the median of each date. Empty cells = NA values
+
+```{r Table, cache = TRUE, echo = TRUE, results='asis'}
+library(xtable)
+
+resume <- data.frame(
+    Current_Date = as.character(unique(df$date)),
+    Mean_Value_Calculated = sapply(StepsByDate, mean, na.rm = TRUE),
+    Median_Value_Calculated = sapply(StepsByDate, median, na.rm = TRUE)
+)
+
+print(xtable(resume),
+      include.rownames = FALSE,
+      type = "html")
+```
 
 
-## What is the average daily activity pattern?
+### What is the average daily activity pattern?
+
+Now we should Make a time series plot (i.e. type="l") of the 5-minute interval (x-axis) and the average number of steps taken, averaged across all days (y-axis).  
+
+So now, we make the split by interval instead by date. In that case, instead of the maximum we are looking for the average value.
+
+```{r Calculate2, cache = TRUE, results='hide'}
+StepsPerInterval <- split(df$steps, df$interval)
+AverageStepsPerInterval <- sapply(StepsPerInterval, mean, na.rm = TRUE)
+```
+
+Finally in this chunk, we generate a plot type "l" of the average number of steps per interval during the day. In the maximum point we are going to generate an abline.
+
+```{r Plot2, cache = TRUE, echo = TRUE}
+plot(unique(df$interval), 
+     AverageStepsPerInterval, 
+     type = "l",
+     xlab = "Interval",
+     ylab = "Steps",
+     col = "green",
+     lwd = 3,
+     main = "Average of steps per interval")
+
+maxpos <- unique(df$interval)[match(max(AverageStepsPerInterval), AverageStepsPerInterval)]
+maxvalue <- max(AverageStepsPerInterval)
+
+abline(h = maxvalue, col = "pink")
+abline(v = maxpos, col = "pink")
+```
+
+Like we can see in the figure, in the interval **`r maxpos`** we found the maximum value: **`r maxvalue`**.  
+
+### Imputing missing values
+
+Note that there are a number of days/intervals where there are missing values (coded as NA). The presence of missing days may introduce bias into some calculations or summaries of the data.
+
+We want to know the total number of NA in the database. So first of all, we obtain this value.
+
+```{r Calculate3, cache = TRUE, results='hide'}
+numNA <- sum(as.numeric(!complete.cases(df$steps)))
+```
+The number of NAs is equal to **`r numNA`**. So now we are going to replace the NAs with the mean value for each day.
+
+```{r Calculate4, cache = TRUE, results='hide'}
+df_raw <- df
+
+# Mean value for day
+MeanStepsPerDay <- sapply(StepsByDate, mean, na.rm = TRUE)
+MeanStepsPerDay[is.nan(MeanStepsPerDay)] <- 0
+
+# Repeat the mean value for each interval
+MeanForInterval <- rep(MeanStepsPerDay, length(unique(df$interval)))
+
+# Replace the NAs values on the df
+NA_pos <- is.na(df$steps)
+df$steps[NA_pos] <- MeanForInterval[NA_pos]
+```
+
+So, now let's compare!
+
+```{r Plot3, cache = TRUE, echo = TRUE}
+TotalStepsByDate_RAW <- TotalStepsByDate
+StepsByDate_RAW <- StepsByDate
+
+StepsByDate <- split(df$steps, df$date$yday)
+TotalStepsByDate <- sapply(StepsByDate, sum, na.rm = TRUE)
+
+par(mfcol = c(2, 1))
+
+plot(x = unique(df$date$yday), 
+     y = TotalStepsByDate_RAW, 
+     main = "Steps by day RAW DATA", 
+     xlab = "Date from October to November 2012)", 
+     ylab = "Frequency",
+     type = "h",
+     lwd = 5,
+     col = "pink")
+
+plot(x = unique(df$date$yday), 
+     y = TotalStepsByDate, 
+     main = "Steps by day REPLACED NA", 
+     xlab = "Date from October to November 2012)", 
+     ylab = "Frequency",
+     type = "h",
+     lwd = 5,
+     col = "pink")
+```
+
+And now the mean and median!
+
+```{r Table2, cache = TRUE, echo = TRUE, results='asis'}
+
+resume <- data.frame(
+    Current_Date = as.character(unique(df$date)),
+    Mean_RAW = sapply(StepsByDate_RAW, mean, na.rm = TRUE),
+    Median_RAW = sapply(StepsByDate_RAW, median, na.rm = TRUE),
+    Mean_Replaced = sapply(StepsByDate, mean, na.rm = TRUE),
+    Median_Replaced = sapply(StepsByDate, median, na.rm = TRUE)
+)
+
+print(xtable(resume),
+      include.rownames = FALSE,
+      type = "html")
+```
 
 
+### Are there differences in activity patterns between weekdays and weekends?
 
-## Imputing missing values
+So, lets see if there are any difference between the two groups using wday (see POSIXlt). We make two new data frames for each one.
+
+```{r Calculate5, cache = TRUE, results='hide'}
+# Add the index of the week day 0 Sunday to 6 Saturday
+df$weekday <- df$date$wday
+
+# Function to labeled the two groups
+labeled <- function(x){
+    if((x > 0) & (x<6)){
+        x <- factor("WEEKDAY")
+    }
+    else{
+        x <- factor("WEEKEND")
+    }
+}
+
+# Apply the funciton
+df$weekday <- sapply(df$weekday, labeled)
+
+# Split into two df
+df_weekend <- df[df$weekday == "WEEKEND",]
+df_weekday <- df[df$weekday == "WEEKDAY",]
+```
+
+And now, we should do a panel plot with the 5-minute interval (x-axis) and the average number of steps taken, averaged across all weekday days or weekend days (y-axis).
+
+```{r Plot4, cache = TRUE, echo = TRUE}
+
+StepsPerInterval_Weekend <- split(df_weekend$steps, df_weekend$interval)
+AverageStepsPerInterval_Weekend <- sapply(StepsPerInterval_Weekend, mean, na.rm = TRUE)
+
+StepsPerInterval_Weekday <- split(df_weekday$steps, df_weekday$interval)
+AverageStepsPerInterval_Weekday <- sapply(StepsPerInterval_Weekday, mean, na.rm = TRUE)
 
 
+par(mfcol = c(2, 1))
 
-## Are there differences in activity patterns between weekdays and weekends?
+plot(unique(df_weekend$interval), 
+     AverageStepsPerInterval_Weekend, 
+     type = "l",
+     xlab = "Interval",
+     ylab = "Steps",
+     col = "green",
+     lwd = 3,
+     main = "Average of steps per interval WEEKEND")
+
+maxpos <- unique(df_weekend$interval)[match(max(AverageStepsPerInterval_Weekend), AverageStepsPerInterval_Weekend)]
+maxvalue <- max(AverageStepsPerInterval_Weekend)
+
+abline(h = maxvalue, col = "pink")
+abline(v = maxpos, col = "pink")
+
+
+plot(unique(df_weekday$interval), 
+     AverageStepsPerInterval_Weekday, 
+     type = "l",
+     xlab = "Interval",
+     ylab = "Steps",
+     col = "green",
+     lwd = 3,
+     main = "Average of steps per interval WEEKDAY")
+
+maxpos <- unique(df_weekday$interval)[match(max(AverageStepsPerInterval_Weekday), AverageStepsPerInterval_Weekday)]
+maxvalue <- max(AverageStepsPerInterval_Weekday)
+
+abline(h = maxvalue, col = "pink")
+abline(v = maxpos, col = "pink")
+```
